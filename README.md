@@ -4,7 +4,7 @@ This repository contains code for predictive analysis using a sample dataset. It
 
 ## Repository Contents
 1. `Predictive_Analysis.ipynb`: Jupyter Notebook containing the main codebase.
-2. `sample_dataset.csv`: A sample dataset used for the predictive analysis.
+2. `machine_downtime.csv`: A sample dataset used for the predictive analysis.
 3. This README file: Instructions on setup, usage, and API testing.
 
 ## Prerequisites
@@ -24,10 +24,10 @@ Ensure you have the following installed:
    - Choose the `Predictive_Analysis.ipynb` file from your local system.
 
 ### 2. Upload the Dataset in Colab
-1. After opening the notebook, ensure you also have the `sample_dataset.csv` file.
+1. After opening the notebook, ensure you also have the `machine_downtime.csv` file.
 2. Upload the dataset in Colab:
    - In the left panel, click on the folder icon.
-   - Click **Upload**, and select `sample_dataset.csv`.
+   - Click **Upload**, and select `machine_downtime.csv`.
    - The dataset will be accessible in the Colab environment.
 
 ### 3. Install Required Libraries
@@ -48,7 +48,7 @@ At the end of the notebook, there is a section to start the Flask API. Execute t
 ## Testing the API with Postman
 
 ### 1. Install Postman
-If you haven't already, download and install [Postman](https://www.postman.com/downloads/).
+If you haven't already, download or open here [Postman](https://www.postman.com/).
 
 ### 2. Set Up Postman Requests
 1. Open Postman and create a new request.
