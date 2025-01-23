@@ -7,116 +7,55 @@ Original file is located at
     https://colab.research.google.com/drive/1UyorH_ZmJPvbPn0kuwWtCmJgnmGsnsZS
 """
 
-!pip install fastapi uvicorn pyngrok  pandas
-!pip install python-multipart
-!pip install scikit-learn==1.3.0
-!pip install imbalanced-learn==0.11.0
-
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, File, UploadFile, HTTPException
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
+from imblearn.over_sampling import SMOTE
 import pandas as pd
-from typing import List
+import numpy as np
+import uvicorn
 import logging
 
+# Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(debug=True)
+# Initialize the FastAPI app
+app = FastAPI()
+
+# Global variables
+scaler = None
+model = None
+dataset = None
 
 @app.get("/")
 async def read_root():
-    logger.info("Root endpoint accessed")
-    return {"message": "Welcome to the Machine Downtime Prediction API!"}
+    return {"message": "Welcome to the Predictive Analysis API!"}
 
 @app.post("/upload/")
 async def upload_file(file: UploadFile = File(...)):
-    logger.info(f"Upload endpoint accessed with file: {file.filename}")
+    global dataset
     try:
-        global dataset
         contents = await file.read()
-        with open('temp.csv', 'wb') as f:
+        with open("uploaded_dataset.csv", "wb") as f:
             f.write(contents)
-        dataset = pd.read_csv('temp.csv')
-
+        dataset = pd.read_csv("uploaded_dataset.csv")
         return {
             "message": f"File '{file.filename}' uploaded successfully",
             "columns": dataset.columns.tolist()
         }
     except Exception as e:
         logger.error(f"Error processing upload: {str(e)}")
-        return {"error": str(e)}
+        raise HTTPException(status_code=500, detail=str(e))
 
-import pandas as pd
-import numpy as np
-
-np.random.seed(42)
-
-# Generate synthetic data
-num_records = 1000
-data = {
-    "Machine_ID": np.random.randint(1, 21, num_records),  # 20 unique machine IDs
-    "Temperature": np.random.uniform(50, 100, num_records),  # Random temperatures between 50 and 100
-    "Run_Time": np.random.uniform(1, 1000, num_records),  # Random run times between 1 and 1000 hours
-    "Downtime_Flag": np.random.choice([0, 1], num_records, p=[0.7, 0.3])  # 70% No downtime, 30% downtime
-}
-
-df = pd.DataFrame(data)
-
-file_name = "machine_downtime.csv"
-df.to_csv(file_name, index=False)
-
-print(f"Synthetic data saved as '{file_name}'")
-print(df.head())
-
-import nest_asyncio
-from pyngrok import ngrok
-import uvicorn
-import threading
-import time
-
-nest_asyncio.apply()
-
-ngrok.kill()
-
-ngrok.set_auth_token("2qHqyeyxjjl6dRFbWCDJGr5BVum_4o9D8GukJFF76Qhr5xWVi")
-ngrok_tunnel = ngrok.connect(8000)
-public_url = ngrok_tunnel.public_url
-print('Public URL:', public_url)
-
-def run_server():
-    uvicorn.run(app, host="0.0.0.0", port=8000)
-
-server_thread = threading.Thread(target=run_server, daemon=True)
-server_thread.start()
-
-time.sleep(5)
-
-import requests
-
-url = "https://229f-34-139-187-100.ngrok-free.app/upload/"  # Replace <YOUR_NGROK_PUBLIC_URL> with your actual ngrok URL
-files = {"file": open("machine_downtime.csv", "rb")}
-response = requests.post(url, files=files)
-
-print(response.json())
-
-from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import precision_score, recall_score
-import joblib
-from fastapi import HTTPException
-
-from sklearn.model_selection import train_test_split, GridSearchCV
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score, f1_score
-from imblearn.over_sampling import SMOTE
-import numpy as np
-
-scaler = StandardScaler()
 @app.post("/train")
 async def train_model():
+    global dataset, model, scaler
     try:
-        global dataset, model, scaler
-
         if dataset is None:
-            return {"error": "No dataset uploaded. Please upload dataset first."}
+            raise HTTPException(status_code=400, detail="No dataset uploaded. Please upload a dataset first.")
 
         X = dataset[["Temperature", "Run_Time"]]
         y = dataset["Downtime_Flag"]
@@ -125,22 +64,14 @@ async def train_model():
             X, y, test_size=0.2, random_state=42, stratify=y
         )
 
+        scaler = StandardScaler()
         X_train_scaled = scaler.fit_transform(X_train)
         X_test_scaled = scaler.transform(X_test)
 
         smote = SMOTE(random_state=42)
-        X_train_resampled, y_train_resampled = smote.fit_resample(
-            X_train_scaled, y_train
-        )
+        X_train_resampled, y_train_resampled = smote.fit_resample(X_train_scaled, y_train)
 
-        model = LogisticRegression(
-            C=1.0,
-            penalty='l2',
-            solver='lbfgs',
-            max_iter=1000,
-            random_state=42
-        )
-
+        model = LogisticRegression(C=1.0, penalty='l2', solver='lbfgs', max_iter=1000, random_state=42)
         model.fit(X_train_resampled, y_train_resampled)
 
         y_pred = model.predict(X_test_scaled)
@@ -152,27 +83,18 @@ async def train_model():
             "recall": np.round(recall_score(y_test, y_pred), 3)
         }
 
-        return {
-            "message": "Model trained successfully",
-            **metrics
-        }
+        return {"message": "Model trained successfully", **metrics}
 
     except Exception as e:
         logger.error(f"Error training model: {str(e)}")
-        return {"error": str(e)}
-
-import requests
-
-# Replace <YOUR_NGROK_PUBLIC_URL> with your updated ngrok public URL
-url = "https://229f-34-139-187-100.ngrok-free.app/train"
-
-response = requests.post(url)
-
-print(response.json())
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/predict")
 async def predict_downtime(data: dict):
+    global model, scaler
     try:
+        if model is None or scaler is None:
+            raise HTTPException(status_code=400, detail="Model not trained. Please train the model first.")
 
         required_fields = ["Temperature", "Run_Time"]
         if not all(field in data for field in required_fields):
@@ -181,9 +103,7 @@ async def predict_downtime(data: dict):
                 detail=f"Missing required fields. Please provide: {required_fields}"
             )
 
-        input_data = pd.DataFrame([data])
-        input_data = input_data[required_fields]  #
-
+        input_data = pd.DataFrame([data])[required_fields]
         input_scaled = scaler.transform(input_data)
 
         prediction = model.predict(input_scaled)[0]
@@ -198,16 +118,8 @@ async def predict_downtime(data: dict):
         logger.error(f"Prediction error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-test_data = {
-    "Temperature": 75.5,
-    "Run_Time": 500
-}
-
-response = requests.post(
-    "https://229f-34-139-187-100.ngrok-free.app/predict",
-    json=test_data
-)
-print(response.json())
+if __name__ == "__main__":
+    uvicorn.run(app, host="127.0.0.1", port=8000)
 
 
 
